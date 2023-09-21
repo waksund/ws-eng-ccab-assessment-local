@@ -1,6 +1,7 @@
 import express from "express";
 import { createClient } from "redis";
 import { json } from "body-parser";
+import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_BALANCE = 100;
 
@@ -29,7 +30,9 @@ async function reset(account: string): Promise<void> {
 
 async function charge(account: string, charges: number): Promise<ChargeResult> {
     const client = await connect();
+    const lockValue = uuidv4();
     try {
+        await lockBalance(account, client, lockValue);
         const balance = parseInt((await client.get(`${account}/balance`)) ?? "");
         if (balance >= charges) {
             await client.set(`${account}/balance`, balance - charges);
@@ -39,8 +42,22 @@ async function charge(account: string, charges: number): Promise<ChargeResult> {
             return { isAuthorized: false, remainingBalance: balance, charges: 0 };
         }
     } finally {
+        await unlockBalance(account, client, lockValue);
         await client.disconnect();
     }
+}
+
+async function lockBalance(account: string, client: any, lockValue: string){
+    await client.set(`${account}/balance_lock`, lockValue, {
+        EX: 30000,
+        NX: true
+    });
+}
+
+async function unlockBalance(account: string, client: any, lockValue: string){
+    let currentLockValue = await client.get(`${account}/balance_lock`);
+    if (currentLockValue == lockValue)
+        await client.del(lockValue);
 }
 
 export function buildApp(): express.Application {
