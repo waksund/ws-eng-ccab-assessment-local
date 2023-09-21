@@ -49,7 +49,7 @@ async function charge(account: string, charges: number): Promise<ChargeResult> {
 
 async function lockBalance(account: string, client: any, lockValue: string){
     await client.set(`${account}/balance_lock`, lockValue, {
-        EX: 30000,
+        PX: 30000,
         NX: true
     });
 }
